@@ -14,12 +14,45 @@ class conv4x4:
                 region = board[i:(i + 4), j:(j + 4)]
                 yield region, i, j
     
-    def forward(self, board):
-        height, width = board.shape
+    def forward(self, input):
+        height, width = input.shape
         output = np.zeros((height - 3, width - 3, self.num_filters))
-        for region, i, j in self.generate_regions(board):
+        for region, i, j in self.generate_regions(input):
             output[i, j] = np.sum(region * self.filters, axis = (1, 2))
         return output
+    
+class MaxPool:
+
+    def generate_regions(self, board):
+        height, width, _ = board.shape
+        new_height = height // 2
+        new_width = width // 2
+        for i in range(new_height):
+            for j in range(new_width):
+                region = board[(i * 2):(i* 2 + 2), (j * 2):(j * 2 + 2)]
+                yield region, i ,j
+    
+    def forward(self, input):
+        height, width, num_filters = input.shape
+        output = np.zeros((height // 2, width // 2, num_filters))
+        for region, i, j in self.generate_regions(input):
+            output[i, j] = np.amax(region, axis = (0, 1))
+        return output
+    
+class Softmax:
+
+    def __init__(self, input_len, nodes):
+        self.weights = np.randn(input_len, nodes) / input_len
+        self.biases = np.zeros(nodes)
+
+    def forward(self, input):
+        input = input.flatten()
+        input_len, nodes = self.weights.shape
+        totals = np.dot(input, self.weights) + self.biases
+        exp = np.exp(totals)
+        return exp/np.sum(exp, axis = 0)
+
+    
     
 test = np.array([
     [0, 0, 0, 0, 0, 0, 0],
@@ -30,9 +63,12 @@ test = np.array([
     [1, 0, 1, 2, 0, 0, 2]
 ])
 
+pool = MaxPool()
 conv = conv4x4(8)
 output = conv.forward(test)
+output = pool.forward(output)
 print(output.shape)
+
 
 
 
