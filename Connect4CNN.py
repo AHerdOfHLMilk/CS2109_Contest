@@ -15,13 +15,27 @@ class conv4x4:
                 yield region, i, j
     
     def forward(self, input):
+        self.last_input = input
         height, width = input.shape
         output = np.zeros((height - 3, width - 3, self.num_filters))
         for region, i, j in self.generate_regions(input):
             output[i, j] = np.sum(region * self.filters, axis = (1, 2))
         return output
     
+    def backprop(self, d_L_d_out, learn_rate):
+        d_L_d_filters = np.zeros(self.filters.shape)
+
+        for im_region, i, j in self.iterate_regions(self.last_input):
+            for f in range(self.num_filters):
+                d_L_d_filters[f] += d_L_d_out[i, j, f] * im_region
+
+        self.filters -= learn_rate * d_L_d_filters
+
+        return None
+    
 class MaxPool:
+
+    prev_input = []
 
     def generate_regions(self, board):
         height, width, _ = board.shape
@@ -33,25 +47,105 @@ class MaxPool:
                 yield region, i ,j
     
     def forward(self, input):
+        self.prev_input = input
         height, width, num_filters = input.shape
         output = np.zeros((height // 2, width // 2, num_filters))
         for region, i, j in self.generate_regions(input):
             output[i, j] = np.amax(region, axis = (0, 1))
         return output
     
+    def backprop(self, d_loss_d_out):
+        d_loss_d_input = np.zeros(self.prev_input.shape)
+
+        for im_region, i, j in self.generate_regions(self.prev_input):
+            height, width, depth = im_region.shape
+            amax = np.amax(im_region, axis=(0, 1))
+
+            for i2 in range(height):
+                for j2 in range(width):
+                    for f2 in range(depth):
+                        # If this pixel was the max value, copy the gradient to it.
+                        if im_region[i2, j2, f2] == amax[f2]:
+                            d_loss_d_input[i * 2 + i2, j * 2 + j2, f2] = d_loss_d_out[i, j, f2]
+
+        return d_loss_d_input
+    
+class MaxPool2:
+
+    prev_input = []
+
+    def forward(self, input):
+        self.prev_input = input
+
+
+
+    
+    
 class Softmax:
+
+    prev_input_shape = 0
+    prev_input = []
+    prev_totals = []
 
     def __init__(self, input_len, nodes):
         self.weights = np.randn(input_len, nodes) / input_len
         self.biases = np.zeros(nodes)
 
     def forward(self, input):
+        self.prev_input_shape = input.shape
         input = input.flatten()
+        self.prev_input = input
         input_len, nodes = self.weights.shape
         totals = np.dot(input, self.weights) + self.biases
+        self.prev_totals = totals
         exp = np.exp(totals)
         return exp/np.sum(exp, axis = 0)
 
+    def backprop(self, d_loss_d_out, learn_rate):
+        for i, gradient in enumerate(d_loss_d_out):
+            if gradient == 0:
+                continue
+            totals_exp = np.exp(self.prev_totals)      
+            S = np.sum(totals_exp)
+            d_out_d_total = -totals_exp[i] * totals_exp / (S ** 2)
+            d_out_d_total[i] = totals_exp[i] * (S - totals_exp[i]) / (S ** 2)
+            # Gradients of totals against weights/biases/input
+            d_total_d_weight = self.prev_input
+            d_total_d_bias = 1
+            d_total_d_inputs = self.weights
+            # Gradients of loss against totals
+            d_loss_d_total = gradient * d_out_d_total
+            # Gradients of loss against weights/biases/input
+            d_loss_d_weight = d_total_d_weight[np.newaxis].T @ d_loss_d_total[np.newaxis]
+            d_loss_d_bias = d_loss_d_total * d_total_d_bias
+            d_loss_d_inputs = d_total_d_inputs @ d_loss_d_total
+
+            # Update weights / biases
+            self.weights -= learn_rate * d_loss_d_weight
+            self.biases -= learn_rate * d_loss_d_bias
+            return d_loss_d_inputs.reshape(self.prev_input_shape)
+        
+def train(im, label, lr=.005, ):
+    '''
+    Completes a full training step on the given image and label.
+    Returns the cross-entropy loss and accuracy.
+    - image is a 2d numpy array
+    - label is a digit
+    - lr is the learning rate
+    '''
+    # Forward
+    out, loss, acc = Softmax.forward(im, label)
+
+    # Calculate initial gradient
+    gradient = np.zeros(10)
+    gradient[label] = -1 / out[label]
+
+    # Backprop
+    gradient = Softmax.backprop(gradient, lr)
+    # TODO: backprop MaxPool2 layer
+    # TODO: backprop Conv3x3 layer
+
+    return loss, acc
     
     
 test = np.array([
@@ -69,7 +163,26 @@ output = conv.forward(test)
 output = pool.forward(output)
 print(output.shape)
 
+print('MNIST CNN initialized!')
 
+train_images = None
+train_labels = None
+
+# Train!
+loss = 0
+num_correct = 0
+for i, (im, label) in enumerate(zip(train_images, train_labels)):
+    if i % 100 == 99:
+        print(
+        '[Step %d] Past 100 steps: Average Loss %.3f | Accuracy: %d%%' %
+        (i + 1, loss / 100, num_correct)
+        )
+        loss = 0
+        num_correct = 0
+
+l, acc = train(im, label)
+loss += l
+num_correct += acc
 
 
 
