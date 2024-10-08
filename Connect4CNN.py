@@ -1,4 +1,12 @@
 import numpy as np
+import random
+
+dataset = []
+labels = []
+for i in range(1000):
+    dataset.append(np.random.randint(2, size=(6,7)))
+for i in range(1000):
+    labels.append(random.randint(0,1))
 
 class conv4x4:
 
@@ -88,7 +96,7 @@ class Softmax:
     prev_totals = []
 
     def __init__(self, input_len, nodes):
-        self.weights = np.randn(input_len, nodes) / input_len
+        self.weights = np.random.randn(input_len, nodes) / input_len
         self.biases = np.zeros(nodes)
 
     def forward(self, input):
@@ -125,27 +133,6 @@ class Softmax:
             self.biases -= learn_rate * d_loss_d_bias
             return d_loss_d_inputs.reshape(self.prev_input_shape)
         
-def train(im, label, lr=.005, ):
-    '''
-    Completes a full training step on the given image and label.
-    Returns the cross-entropy loss and accuracy.
-    - image is a 2d numpy array
-    - label is a digit
-    - lr is the learning rate
-    '''
-    # Forward
-    out, loss, acc = Softmax.forward(im, label)
-
-    # Calculate initial gradient
-    gradient = np.zeros(10)
-    gradient[label] = -1 / out[label]
-
-    # Backprop
-    gradient = Softmax.backprop(gradient, lr)
-    # TODO: backprop MaxPool2 layer
-    # TODO: backprop Conv3x3 layer
-
-    return loss, acc
     
     
 test = np.array([
@@ -159,14 +146,50 @@ test = np.array([
 
 pool = MaxPool()
 conv = conv4x4(8)
+softmax = Softmax(1*2*8, 4)
 output = conv.forward(test)
 output = pool.forward(output)
 print(output.shape)
 
+def forward(image, label):
+  # We transform the image from [0, 255] to [-0.5, 0.5] to make it easier
+  # to work with. This is standard practice.
+  out = conv.forward(image)
+  out = pool.forward(out)
+  out = softmax.forward(out)
+
+  # Calculate cross-entropy loss and accuracy. np.log() is the natural log.
+  loss = -np.log(out[label])
+  acc = 1 if np.argmax(out) == label else 0
+
+  return out, loss, acc
+        
+def train(im, label, lr=.005, ):
+    '''
+    Completes a full training step on the given image and label.
+    Returns the cross-entropy loss and accuracy.
+    - image is a 2d numpy array
+    - label is a digit
+    - lr is the learning rate
+    '''
+    # Forward
+    out, loss, acc = forward(im, label)
+
+    # Calculate initial gradient
+    gradient = np.zeros(10)
+    gradient[label] = -1 / out[label]
+
+    # Backprop
+    gradient = softmax.backprop(gradient, lr)
+    # TODO: backprop MaxPool2 layer
+    # TODO: backprop Conv3x3 layer
+
+    return loss, acc
+
 print('MNIST CNN initialized!')
 
-train_images = None
-train_labels = None
+train_images = dataset
+train_labels = labels
 
 # Train!
 loss = 0
@@ -180,9 +203,9 @@ for i, (im, label) in enumerate(zip(train_images, train_labels)):
         loss = 0
         num_correct = 0
 
-l, acc = train(im, label)
-loss += l
-num_correct += acc
+    l, acc = train(im, label)
+    loss += l
+    num_correct += acc
 
 
 
